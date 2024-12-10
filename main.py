@@ -9,6 +9,8 @@ from urllib.parse import urlparse, urljoin
 
 app = Flask(__name__)
 
+VERIFY_TOKEN = "hello"
+
 class WhatsAppClient:
     def __init__(self, phone_number_id, access_token):
         self.phone_number_id = phone_number_id
@@ -159,30 +161,46 @@ class WebProxy:
 
         return "Unknown command. Use 'fetch:URL' to request a webpage."
 
+# Add this new route for webhook verification
+@app.route("/webhook", methods=['GET'])
+def verify_webhook():
+    mode = request.args.get("hub.mode")
+    token = request.args.get("hub.verify_token")
+    challenge = request.args.get("hub.challenge")
+
+    if mode and token:
+        if mode == "subscribe" and token == VERIFY_TOKEN:
+            print("WEBHOOK_VERIFIED")
+            return challenge
+        else:
+            return "Forbidden", 403
+
+    return "Not Found", 404
+
 @app.route("/webhook", methods=['POST'])
 def webhook():
     """Handle incoming WhatsApp messages"""
     data = request.get_json()
-
+    
     # Extract message and user info from WhatsApp webhook
     try:
         message = data['entry'][0]['changes'][0]['value']['messages'][0]
         user_id = message['from']
-
+        
         if 'text' in message:
             command = message['text']['body']
             proxy = WebProxy()
             response = proxy.handle_command(user_id, command)
-
+            
             # Send text response
             proxy.whatsapp.send_message(
                 to=user_id,
                 text=response
             )
-
+            
     except Exception as e:
         print(f"Error processing webhook: {e}")
-
+    
     return "OK"
 
 if __name__ == "__main__":
